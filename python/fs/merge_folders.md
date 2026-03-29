@@ -31,14 +31,15 @@ uv run python merge_folders.py
 1. Copy files (Step 1)
 2. Analyze folders (Step 2) - 3 reports
 3. Move videos from YYYYMM to video folder (tmp)
-4. Run all steps (1 + 2)
+4. Copy files (Step 4 - remove source if exists)
+5. Run Step 1 + 2 (Copy + Analyze)
 0. Exit
 ```
 
 ### 命令行模式
 
 ```bash
-uv run python merge_folders.py 4    # (1 + 2)
+uv run python merge_folders.py 5    # (1 + 2)
 ```
 
 ## 输出文件

@@ -55,6 +55,31 @@ def ensure_dir(p: pathlib.Path):
     p.mkdir(parents=True, exist_ok=True)
 
 
+def get_destination_path(
+    src: pathlib.Path, dst_dir: pathlib.Path
+) -> pathlib.Path | None:
+    """
+    Determine the destination path for the file.
+    Returns None if the file already exists with the same size (skip copy but remove source in move).
+    Returns a Path object if we need to copy the file (either to a new name or to overwrite).
+    """
+    candidate = dst_dir / src.name
+    if not candidate.exists():
+        return candidate
+    # candidate exists
+    if os.path.getsize(candidate) == os.path.getsize(src):
+        return None  # same size: don't copy, but we'll remove source in move case
+    # different size: find a new name
+    stem = src.stem
+    suffix = src.suffix
+    idx = 1
+    while True:
+        candidate = dst_dir / f"{stem}_{idx}{suffix}"
+        if not candidate.exists():
+            return candidate
+        idx += 1
+
+
 def copy_file(src: pathlib.Path, dst_dir: pathlib.Path):
     """
     Copy src file to dst_dir.
@@ -62,21 +87,36 @@ def copy_file(src: pathlib.Path, dst_dir: pathlib.Path):
       - if sizes equal: skip and print message
       - if sizes differ: save as <stem>_<index><suffix> with incrementing index
     """
-    stem = src.stem
-    suffix = src.suffix
-    candidate = dst_dir / src.name
-    idx = 1
-    while candidate.exists():
-        if os.path.getsize(candidate) == os.path.getsize(src):
-            print(f"Skipping {src.name}: identical size in {dst_dir}")
-            return
-        candidate = dst_dir / f"{stem}_{idx}{suffix}"
-        idx += 1
-    shutil.copy2(src, candidate)
-    if candidate.name == src.name:
-        print(f"Copied {src.name} -> {dst_dir}")
+    dst_path = get_destination_path(src, dst_dir)
+    if dst_path is not None:
+        shutil.copy2(src, dst_path)
+        if dst_path.name == src.name:
+            print(f"Copied {src.name} -> {dst_dir}")
+        else:
+            print(f"Copied as {dst_path.name} (size differed) -> {dst_dir}")
     else:
-        print(f"Copied as {candidate.name} (size differed) -> {dst_dir}")
+        print(f"Skipping {src.name}: identical size in {dst_dir}")
+
+
+def move_file(src: pathlib.Path, dst_dir: pathlib.Path):
+    """
+    Move src file to dst_dir (copy then remove source).
+    If file with same name exists:
+      - if sizes equal: remove source and print message
+      - if sizes differ: save as <stem>_<index><suffix> with incrementing index, then remove source
+    """
+    dst_path = get_destination_path(src, dst_dir)
+    if dst_path is not None:
+        shutil.copy2(src, dst_path)
+        src.unlink()  # remove source after copy
+        if dst_path.name == src.name:
+            print(f"Moved {src.name} -> {dst_dir}")
+        else:
+            print(f"Moved as {dst_path.name} (size differed) -> {dst_dir}")
+    else:
+        # same size: remove source since we already have identical file
+        src.unlink()
+        print(f"Removed {src.name}: identical size in {dst_dir}")
 
 
 def step1_copy_files():
@@ -101,6 +141,30 @@ def step1_copy_files():
                     dst_subdir = pathlib.Path(dest_base) / yymm
                     ensure_dir(dst_subdir)
                     copy_file(src_file, dst_subdir)
+
+
+def step4_copy_files_remove_source():
+    """Step 4: Copy files from source to destination, organizing by modified date, removing source file if exists."""
+    src_roots = get_src_roots()
+    if not src_roots:
+        print("No source folders matched the pattern.")
+        return
+
+    ensure_dir(pathlib.Path(dest_base))
+    ensure_dir(pathlib.Path(dest_base_video))
+
+    for src_root in src_roots:
+        print(f"Processing source: {src_root}")
+        for src_file in src_root.rglob("*"):
+            if src_file.is_file():
+                if is_video(src_file):
+                    ensure_dir(pathlib.Path(dest_base_video))
+                    move_file(src_file, pathlib.Path(dest_base_video))
+                else:
+                    yymm = get_modified_ym(src_file)
+                    dst_subdir = pathlib.Path(dest_base) / yymm
+                    ensure_dir(dst_subdir)
+                    move_file(src_file, dst_subdir)
 
 
 def collect_folder_stats(base_path: pathlib.Path) -> list:
@@ -310,13 +374,14 @@ def show_menu():
     print("1. Copy files (Step 1)")
     print("2. Analyze folders (Step 2) - 3 reports")
     print("3. Move videos from YYYYMM to video folder (tmp)")
-    print("4. Run Step 1 + 2 (Copy + Analyze)")
+    print("4. Copy files (Step 4 - remove source if exists)")
+    print("5. Run Step 1 + 2 (Copy + Analyze)")
     print("0. Exit")
     print()
 
     while True:
-        choice = input("Enter your choice (0-4): ").strip()
-        if choice in ["0", "1", "2", "3", "4"]:
+        choice = input("Enter your choice (0-5): ").strip()
+        if choice in ["0", "1", "2", "3", "4", "5"]:
             return choice
         print("Invalid choice. Please try again.")
 
@@ -340,6 +405,10 @@ def main():
         step3_move_videos()
         print("\nMoving completed!")
     elif choice == "4":
+        print("\n--- Step 4: Copy files (remove source if exists) ---")
+        step4_copy_files_remove_source()
+        print("\nStep 4 completed!")
+    elif choice == "5":
         print("\n--- Step 1: Copying files ---")
         step1_copy_files()
         print("\n--- Step 2: Analyzing folder sizes ---")
@@ -351,10 +420,11 @@ def main():
         print(f"Invalid choice: {choice}")
         print("Usage: uv run python merge_folders.py [choice]")
         print("  0 = Exit")
-        print("  1 = Copy files")
-        print("  2 = Analyze folders (3 reports)")
-        print("  3 = Move videos")
-        print("  4 = All steps")
+        print("  1 = Copy files (Step 1)")
+        print("  2 = Analyze folders (Step 2)")
+        print("  3 = Move videos (Step 3)")
+        print("  4 = Copy files (Step 4 - remove source)")
+        print("  5 = Run Step 1 + 2 (Copy + Analyze)")
 
 
 if __name__ == "__main__":
