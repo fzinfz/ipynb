@@ -8,8 +8,8 @@ import sys
 # uv run python merge_folders.py
 
 # Configuration
-src_pattern = r"D:\_images\Screenshots*"
-dest_base = r"F:\_images\Screenshots"
+src_pattern = r"d:\_images\iPad*"
+dest_base = r"F:\_images\iPad"
 dest_base_video = r"F:\_videos"
 
 # Video file extensions (lowercase)
@@ -95,20 +95,19 @@ def copy_file(src: pathlib.Path, dst_dir: pathlib.Path):
         else:
             print(f"Copied as {dst_path.name} (size differed) -> {dst_dir}")
     else:
-        print(f"Skipping {src.name}: identical size in {dst_dir}")
+        1 # print(f"Skipping {src.name}: identical size in {dst_dir}")
 
 
 def move_file(src: pathlib.Path, dst_dir: pathlib.Path):
     """
-    Move src file to dst_dir (copy then remove source).
+    Move src file to dst_dir.
     If file with same name exists:
       - if sizes equal: remove source and print message
       - if sizes differ: save as <stem>_<index><suffix> with incrementing index, then remove source
     """
     dst_path = get_destination_path(src, dst_dir)
     if dst_path is not None:
-        shutil.copy2(src, dst_path)
-        src.unlink()  # remove source after copy
+        shutil.move(str(src), str(dst_path))
         if dst_path.name == src.name:
             print(f"Moved {src.name} -> {dst_dir}")
         else:
@@ -117,6 +116,16 @@ def move_file(src: pathlib.Path, dst_dir: pathlib.Path):
         # same size: remove source since we already have identical file
         src.unlink()
         print(f"Removed {src.name}: identical size in {dst_dir}")
+
+
+def get_destination_subdir(src_file: pathlib.Path) -> pathlib.Path:
+    yymm = get_modified_ym(src_file)
+    """Determine the destination subdirectory based on file type and modified date."""
+    if is_video(src_file):
+        dst_subdir = pathlib.Path(dest_base_video) / yymm
+    else:
+        dst_subdir = pathlib.Path(dest_base) / yymm
+    return dst_subdir
 
 
 def step1_copy_files():
@@ -133,14 +142,9 @@ def step1_copy_files():
         print(f"Processing source: {src_root}")
         for src_file in src_root.rglob("*"):
             if src_file.is_file():
-                if is_video(src_file):
-                    ensure_dir(pathlib.Path(dest_base_video))
-                    copy_file(src_file, pathlib.Path(dest_base_video))
-                else:
-                    yymm = get_modified_ym(src_file)
-                    dst_subdir = pathlib.Path(dest_base) / yymm
-                    ensure_dir(dst_subdir)
-                    copy_file(src_file, dst_subdir)
+                dst_subdir = get_destination_subdir(src_file)
+                ensure_dir(dst_subdir)
+                copy_file(src_file, dst_subdir)
 
 
 def step4_copy_files_remove_source():
@@ -157,14 +161,9 @@ def step4_copy_files_remove_source():
         print(f"Processing source: {src_root}")
         for src_file in src_root.rglob("*"):
             if src_file.is_file():
-                if is_video(src_file):
-                    ensure_dir(pathlib.Path(dest_base_video))
-                    move_file(src_file, pathlib.Path(dest_base_video))
-                else:
-                    yymm = get_modified_ym(src_file)
-                    dst_subdir = pathlib.Path(dest_base) / yymm
-                    ensure_dir(dst_subdir)
-                    move_file(src_file, dst_subdir)
+                dst_subdir = get_destination_subdir(src_file)
+                ensure_dir(dst_subdir)
+                move_file(src_file, dst_subdir)
 
 
 def collect_folder_stats(base_path: pathlib.Path) -> list:

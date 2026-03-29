@@ -1,6 +1,6 @@
 ## 功能
 
-文件整理工具：将文件按修改日期分类复制，视频文件单独文件夹。
+文件整理工具：将文件按修改日期分类移动，视频文件单独文件夹。
 
 ## 依赖
 
@@ -31,7 +31,7 @@ uv run python merge_folders.py
 1. Copy files (Step 1)
 2. Analyze folders (Step 2) - 3 reports
 3. Move videos from YYYYMM to video folder (tmp)
-4. Copy files (Step 4 - remove source if exists)
+4. Move files (Step 4 - remove source if exists)
 5. Run Step 1 + 2 (Copy + Analyze)
 0. Exit
 ```
