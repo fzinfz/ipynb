@@ -8,8 +8,8 @@ import sys
 # uv run python merge_folders.py
 
 # Configuration
-src_pattern = r"D:\_images\iPad Mini 5*"
-dest_base = r"F:\_images\iPad Mini 5"
+src_pattern = r"D:\_images\Screenshots*"
+dest_base = r"F:\_images\Screenshots"
 dest_base_video = r"F:\_videos"
 
 # Video file extensions (lowercase)
@@ -81,9 +81,7 @@ def copy_file(src: pathlib.Path, dst_dir: pathlib.Path):
 
 def step1_copy_files():
     """Step 1: Copy files from source to destination, organizing by modified date."""
-    src_roots = [
-        pathlib.Path(p) for p in pathlib.Path(r"D:\_images").glob("iPad Mini 5*")
-    ]
+    src_roots = get_src_roots()
     if not src_roots:
         print("No source folders matched the pattern.")
         return
@@ -287,27 +285,38 @@ def step3_move_videos():
     print(f"Total: {moved + skipped + overwritten}")
 
 
+def get_src_roots() -> list:
+    """Get source root directories from src_pattern."""
+    src_pattern_path = pathlib.Path(src_pattern)
+    src_parent = src_pattern_path.parent
+    src_glob = src_pattern_path.name
+    return [pathlib.Path(p) for p in src_parent.glob(src_glob)]
+
+
 def show_menu():
     """Display menu and get user choice."""
+    src_roots = get_src_roots()
     print("=" * 60)
     print("File Copy and Folder Analysis Tool")
     print("=" * 60)
     print(f"Source pattern: {src_pattern}")
+    print(f"Source roots ({len(src_roots)}):")
+    for root in src_roots:
+        print(f"  - {root}")
     print(f"Destination (images): {dest_base}")
     print(f"Destination (videos): {dest_base_video}")
     print("=" * 60)
     print("\nSelect operation:")
     print("1. Copy files (Step 1)")
     print("2. Analyze folders (Step 2) - 3 reports")
-    print("3. Move videos from YYYYMM to video folder (Step 3)")
-    print("4. Run all steps (1 + 2 + 3)")
-    print("5. Run Step 2 + 3 (Analyze + Move videos)")
+    print("3. Move videos from YYYYMM to video folder (tmp)")
+    print("4. Run Step 1 + 2 (Copy + Analyze)")
     print("0. Exit")
     print()
 
     while True:
-        choice = input("Enter your choice (0-5): ").strip()
-        if choice in ["0", "1", "2", "3", "4", "5"]:
+        choice = input("Enter your choice (0-4): ").strip()
+        if choice in ["0", "1", "2", "3", "4"]:
             return choice
         print("Invalid choice. Please try again.")
 
@@ -335,14 +344,6 @@ def main():
         step1_copy_files()
         print("\n--- Step 2: Analyzing folder sizes ---")
         step2_folder_sizes()
-        print("\n--- Step 3: Moving videos ---")
-        step3_move_videos()
-        print("\nAll steps completed!")
-    elif choice == "5":
-        print("\n--- Step 2: Analyzing folder sizes ---")
-        step2_folder_sizes()
-        print("\n--- Step 3: Moving videos ---")
-        step3_move_videos()
         print("\nSteps completed!")
     elif choice == "0":
         print("Exiting...")
@@ -354,7 +355,6 @@ def main():
         print("  2 = Analyze folders (3 reports)")
         print("  3 = Move videos")
         print("  4 = All steps")
-        print("  5 = Analyze + Move videos")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 ## 功能
 
-文件整理工具：将文件按修改日期分类复制，视频文件单独处理。
+文件整理工具：将文件按修改日期分类复制，视频文件单独文件夹。
 
 ## 依赖
 
@@ -13,9 +13,9 @@
 编辑脚本顶部的配置变量：
 
 ```python
-src_pattern = r"D:\_images\iPad Mini 5*"   # 源文件夹模式
-dest_base = r"F:\_images\iPad Mini 5"       # 图片目标文件夹
-dest_base_video = r"F:\_images\iPad Mini 5_video"  # 视频目标文件夹
+src_pattern = r"D:\_images\iPad*"   # 源文件夹模式
+dest_base = r"F:\_images\iPad"       # 图片目标文件夹
+dest_base_video = r"F:\_videos"  # 视频目标文件夹
 ```
 
 ## 使用方法
@@ -30,20 +30,15 @@ uv run python merge_folders.py
 ```
 1. Copy files (Step 1)
 2. Analyze folders (Step 2) - 3 reports
-3. Move videos from YYYYMM to video folder (Step 3)
-4. Run all steps (1 + 2 + 3)
-5. Run Step 2 + 3 (Analyze + Move videos)
+3. Move videos from YYYYMM to video folder (tmp)
+4. Run all steps (1 + 2)
 0. Exit
 ```
 
 ### 命令行模式
 
 ```bash
-uv run python merge_folders.py 1    # 仅复制文件
-uv run python merge_folders.py 2    # 仅分析文件夹
-uv run python merge_folders.py 3    # 仅移动视频
-uv run python merge_folders.py 4    # 全部步骤
-uv run python merge_folders.py 5    # 分析 + 移动视频
+uv run python merge_folders.py 4    # (1 + 2)
 ```
 
 ## 输出文件
@@ -52,9 +47,9 @@ Step 2 生成的报告保存在目标文件夹的父目录：
 
 | 文件名 | 说明 |
 |--------|------|
-| `iPad Mini 5_by_name.txt` | 按文件夹名称排序 |
-| `iPad Mini 5_by_file_count.txt` | 按文件数量降序排列 |
-| `iPad Mini 5_by_folder_size.txt` | 按文件夹大小降序排列 |
+| `iPad_by_name.txt` | 按文件夹名称排序 |
+| `iPad_by_file_count.txt` | 按文件数量降序排列 |
+| `iPad_by_folder_size.txt` | 按文件夹大小降序排列 |
 
 报告内容示例：
 ```
