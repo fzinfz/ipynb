@@ -1,0 +1,1 @@
+uv run --with flask --with requests python app.py

@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>InfluxDB Reports</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f6f8;
+      color: #333;
+    }
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e1e4e8;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+    .server-select {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .server-select label {
+      font-size: 14px;
+      color: #666;
+    }
+    select, input, button {
+      padding: 6px 10px;
+      font-size: 14px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      background: #fff;
+    }
+    button {
+      cursor: pointer;
+      background: #f6f8fa;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #eef1f5;
+    }
+    main {
+      padding: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .report {
+      background: #fff;
+      border: 1px solid #e1e4e8;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .report-header {
+      padding: 14px 18px;
+      background: #f6f8fa;
+      border-bottom: 1px solid #e1e4e8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .report-header h2 {
+      font-size: 16px;
+      margin: 0;
+    }
+    .report-header .status {
+      font-size: 12px;
+      color: #888;
+    }
+    .report-controls {
+      padding: 10px 18px;
+      border-bottom: 1px solid #e1e4e8;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .report-controls label {
+      font-size: 13px;
+      color: #555;
+      font-weight: 500;
+    }
+    .tag-filter {
+      padding: 8px 18px;
+      border-bottom: 1px solid #e1e4e8;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .tag-filter .filter-label {
+      font-size: 13px;
+      color: #555;
+      font-weight: 500;
+    }
+    .tag-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .tag-checkbox input {
+      margin: 0;
+    }
+    .report-body {
+      padding: 18px;
+      overflow-x: auto;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 300px;
+      margin-bottom: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border: 1px solid #e1e4e8;
+      padding: 8px 10px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    th {
+      background: #f6f8fa;
+      font-weight: 600;
+    }
+    tr:nth-child(even) { background: #fafbfc; }
+    .error {
+      color: #cf222e;
+      background: #ffebe9;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .empty {
+      color: #666;
+      font-size: 13px;
+      padding: 10px 0;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #e1e4e8;
+      border-top-color: #333;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fold-hint {
+      text-align: center;
+      color: #888;
+      padding: 6px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Reports</h1>
+    <div class="server-select">
+      <label for="server">Server</label>
+      <select id="server"></select>
+    </div>
+  </header>
+
+  <main id="reports"></main>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+    const serverSelect = $("#server");
+    const reportsContainer = $("#reports");
+
+    let servers = [];
+    let reports = [];
+
+    async function loadServers() {
+      const res = await fetch("/api/servers");
+      servers = await res.json();
+      serverSelect.innerHTML = servers.map(s => `<option value="${s.id}">${s.id} - ${s.url}</option>`).join("");
+      if (servers.length) {
+        localStorage.setItem("lastServerId", serverSelect.value);
+      }
+    }
+
+    async function loadReports() {
+      const res = await fetch("/api/reports");
+      reports = await res.json();
+      renderReports();
+    }
+
+    function renderReports() {
+      reportsContainer.innerHTML = reports.map(r => `
+        <div class="report" data-id="${r.id}" data-type="${r.type}">
+          <div class="report-header">
+            <h2>${r.id}</h2>
+            <span class="status"><span class="spinner"></span>Loading...</span>
+          </div>
+          <div class="report-controls">
+            <label for="range-${r.id}">Range</label>
+            <select id="range-${r.id}" class="range-start">
+              <option value="-3d">3d</option>
+              <option value="-7d">7d</option>
+              <option value="-30d">30d</option>
+              <option value="-3mo" selected>3mo</option>
+            </select>
+            <button class="btn-apply">Apply</button>
+          </div>
+          <div class="tag-filter" style="display:none"></div>
+          <div class="report-body"></div>
+        </div>
+      `).join("");
+      reports.forEach(r => {
+        const el = $(`.report[data-id="${r.id}"]`);
+        el.querySelector(".btn-apply").addEventListener("click", () => runReport(r.id));
+        runReport(r.id);
+      });
+    }
+
+    function parseCSV(text) {
+      const lines = text.split("\n").filter(l => l.trim() !== "" && !l.startsWith("#"));
+      if (lines.length === 0) return { headers: [], rows: [] };
+      const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+      const rows = lines.slice(1).map(line => {
+        const vals = [];
+        let cur = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            inQuotes = !inQuotes;
+          } else if (ch === ',' && !inQuotes) {
+            vals.push(cur.trim());
+            cur = "";
+          } else {
+            cur += ch;
+          }
+        }
+        vals.push(cur.trim());
+        return vals.map(v => v.replace(/^"|"$/g, ""));
+      });
+      return { headers, rows };
+    }
+
+    function buildTableHTML(headers, rows) {
+      const thead = `<thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>`;
+      let tbodyRows = [];
+      if (rows.length >= 10) {
+        tbodyRows = rows.slice(0, 3).map(row => `<tr>${row.map(c => `<td>${c}</td>`).join("")}</tr>`);
+        tbodyRows.push(`<tr><td class="fold-hint" colspan="${headers.length}">... ${rows.length - 6} rows hidden ...</td></tr>`);
+        tbodyRows.push(...rows.slice(-3).map(row => `<tr>${row.map(c => `<td>${c}</td>`).join("")}</tr>`));
+      } else {
+        tbodyRows = rows.map(row => `<tr>${row.map(c => `<td>${c}</td>`).join("")}</tr>`);
+      }
+      return `<table>${thead}<tbody>${tbodyRows.join("")}</tbody></table>`;
+    }
+
+    function drawChart(canvasId, headers, rows) {
+      const timeIdx = headers.findIndex(h => h === "_time");
+      const valueIdx = headers.findIndex(h => h === "_value");
+      const tagIdx = headers.findIndex(h => h === "tag");
+      if (timeIdx === -1 || valueIdx === -1) return;
+
+      const groups = {};
+      rows.forEach(row => {
+        const tag = tagIdx >= 0 ? (row[tagIdx] || "default") : "default";
+        if (!groups[tag]) groups[tag] = [];
+        groups[tag].push({ t: row[timeIdx], v: parseFloat(row[valueIdx]) });
+      });
+
+      const colors = [
+        "rgb(75, 192, 192)", "rgb(255, 99, 132)", "rgb(54, 162, 235)",
+        "rgb(255, 206, 86)", "rgb(153, 102, 255)", "rgb(255, 159, 64)",
+        "rgb(199, 199, 199)", "rgb(83, 102, 255)", "rgb(40, 159, 64)", "rgb(215, 99, 132)"
+      ];
+
+      const datasets = Object.keys(groups).map((tag, i) => ({
+        label: tag,
+        data: groups[tag].map(p => ({ x: p.t, y: p.v })),
+        borderColor: colors[i % colors.length],
+        backgroundColor: colors[i % colors.length],
+        fill: false,
+        tension: 0.1,
+        pointRadius: 2,
+      }));
+
+      const ctx = document.getElementById(canvasId).getContext("2d");
+      new Chart(ctx, {
+        type: "line",
+        data: { datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              type: "category",
+              ticks: { maxRotation: 45, minRotation: 30, autoSkip: true, maxTicksLimit: 12 }
+            },
+            y: { beginAtZero: false }
+          },
+          plugins: {
+            legend: { position: "top" },
+            tooltip: { mode: "index", intersect: false }
+          }
+        }
+      });
+    }
+
+    function renderTagFilter(el, tags) {
+      const filterEl = el.querySelector(".tag-filter");
+      if (!tags || tags.length <= 1) {
+        filterEl.style.display = "none";
+        return;
+      }
+      filterEl.style.display = "flex";
+      filterEl.innerHTML = `
+        <span class="filter-label">Tags:</span>
+        <button class="btn-select-all" title="Select all">All</button>
+        <button class="btn-select-none" title="Unselect all">None</button>
+        ${tags.map(tag => `
+          <label class="tag-checkbox">
+            <input type="checkbox" value="${tag}" checked>
+            <span>${tag}</span>
+          </label>
+        `).join("")}
+      `;
+      filterEl.querySelectorAll("input[type=checkbox]").forEach(cb => {
+        cb.addEventListener("change", () => {
+          const selected = Array.from(filterEl.querySelectorAll("input[type=checkbox]:checked")).map(c => c.value);
+          renderBody(el, selected);
+        });
+      });
+      filterEl.querySelector(".btn-select-all").addEventListener("click", () => {
+        filterEl.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = true);
+        const selected = Array.from(filterEl.querySelectorAll("input[type=checkbox]:checked")).map(c => c.value);
+        renderBody(el, selected);
+      });
+      filterEl.querySelector(".btn-select-none").addEventListener("click", () => {
+        filterEl.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+        const selected = Array.from(filterEl.querySelectorAll("input[type=checkbox]:checked")).map(c => c.value);
+        renderBody(el, selected);
+      });
+    }
+
+    function renderBody(el, selectedTags) {
+      if (!el._data) return;
+      const { headers, rows } = el._data;
+      const tagIdx = headers.findIndex(h => h === "tag");
+      const rtype = el.dataset.type;
+
+      let filteredRows = rows;
+      if (tagIdx >= 0 && selectedTags) {
+        filteredRows = rows.filter(row => selectedTags.includes(row[tagIdx] || "default"));
+      }
+
+      const canvasId = `chart-${el.dataset.id}`;
+      const bodyEl = el.querySelector(".report-body");
+      const chartHTML = rtype === "chart" ? `<div class="chart-wrap"><canvas id="${canvasId}"></canvas></div>` : "";
+      bodyEl.innerHTML = `${chartHTML}${buildTableHTML(headers, filteredRows)}`;
+      if (rtype === "chart") {
+        drawChart(canvasId, headers, filteredRows);
+      }
+      el.querySelector(".status").textContent = `${filteredRows.length} / ${rows.length} rows`;
+    }
+
+    async function runReport(reportId) {
+      const serverId = serverSelect.value;
+      const el = $(`.report[data-id="${reportId}"]`);
+      const statusEl = el.querySelector(".status");
+      const bodyEl = el.querySelector(".report-body");
+      const start = el.querySelector(".range-start").value;
+
+      statusEl.innerHTML = '<span class="spinner"></span>Loading...';
+
+      try {
+        const res = await fetch(`/api/query/${encodeURIComponent(reportId)}?server_id=${encodeURIComponent(serverId)}&start=${encodeURIComponent(start)}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        const text = await res.text();
+        if (!text.trim()) {
+          bodyEl.innerHTML = '<div class="empty">No data returned.</div>';
+          el.querySelector(".tag-filter").style.display = "none";
+          statusEl.textContent = "Done";
+          return;
+        }
+        const { headers, rows } = parseCSV(text);
+        if (headers.length === 0) {
+          bodyEl.innerHTML = '<div class="empty">No data returned.</div>';
+          el.querySelector(".tag-filter").style.display = "none";
+          statusEl.textContent = "Done";
+          return;
+        }
+
+        el._data = { headers, rows };
+
+        const tagIdx = headers.findIndex(h => h === "tag");
+        let allTags = [];
+        if (tagIdx >= 0) {
+          const tagSet = new Set();
+          rows.forEach(row => tagSet.add(row[tagIdx] || "default"));
+          allTags = Array.from(tagSet).sort();
+        }
+        renderTagFilter(el, allTags);
+        renderBody(el, allTags);
+      } catch (err) {
+        bodyEl.innerHTML = `<div class="error">${err.message}</div>`;
+        el.querySelector(".tag-filter").style.display = "none";
+        statusEl.textContent = "Error";
+      }
+    }
+
+    serverSelect.addEventListener("change", () => {
+      localStorage.setItem("lastServerId", serverSelect.value);
+      renderReports();
+    });
+
+    async function init() {
+      await loadServers();
+      const last = localStorage.getItem("lastServerId");
+      if (last && Array.from(serverSelect.options).some(o => o.value === last)) {
+        serverSelect.value = last;
+      }
+      await loadReports();
+    }
+
+    init();
+  </script>
+</body>
+</html>
